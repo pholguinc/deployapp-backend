@@ -1,0 +1,208 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id        String       @id @default(uuid())
+  email     String       @unique
+  password  String
+  name      String?
+  lastname  String?
+  phone     String?
+  isActive  Boolean      @default(true)
+  roleId    String?
+  role      Role?        @relation(fields: [roleId], references: [id], onDelete: SetNull)
+  sessions  Session[]
+  comments  Comment[]
+  courses   UserCourse[]
+  courseReviews CourseReview[]
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@map("users")
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  users       User[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("roles")
+}
+
+model Session {
+  id               String   @id @default(uuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshTokenHash String
+  userAgent        String?
+  ipAddress        String?
+  isRevoked        Boolean  @default(false)
+  expiresAt        DateTime
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model Achievement {
+  id        String   @id @default(uuid())
+  name      String
+  icon      String?
+  color     String?
+  estado    Boolean  @default(true)
+  orden     Int      @default(0)
+  createdBy String?
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("achievements")
+}
+
+model Course {
+  id           String   @id @default(uuid())
+  title        String
+  description  String?
+  category     String?
+  level        String?
+  duration     String?
+  lessonsCount Int      @default(0)
+  rating       Float    @default(0)
+  instructor   String?
+  imageUrl     String?
+  features     String[]
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  modules Module[]
+  users   UserCourse[]
+  reviews CourseReview[]
+
+  @@map("courses")
+}
+
+model UserCourse {
+  userId    String
+  courseId  String
+  status    String   @default("ENROLLED") // ENROLLED, COMPLETED
+  progress  Int      @default(0) // percentage 0-100
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@id([userId, courseId])
+  @@map("user_courses")
+}
+
+model Module {
+  id       String   @id @default(uuid())
+  title    String
+  order    Int      @default(0)
+  courseId String
+  course   Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lessons  Lesson[]
+
+  @@map("modules")
+}
+
+model Lesson {
+  id        String     @id @default(uuid())
+  title     String
+  duration  String? // e.g. "08:35 min"
+  videoUrl  String?
+  type      String     @default("VIDEO") // VIDEO, QUIZ, TEXT
+  order     Int        @default(0)
+  moduleId  String
+  module    Module     @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  resources Resource[]
+  comments  Comment[]
+  quizzes   Quiz[]
+
+  @@map("lessons")
+}
+
+model Resource {
+  id       String  @id @default(uuid())
+  name     String
+  type     String  @default("PDF")
+  size     String? // e.g. "3.8 MB"
+  url      String
+  lessonId String
+  lesson   Lesson  @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@map("resources")
+}
+
+model Comment {
+  id        String   @id @default(uuid())
+  text      String
+  likes     Int      @default(0)
+  lessonId  String
+  userId    String
+  lesson    Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("comments")
+}
+
+model Quiz {
+  id        String     @id @default(uuid())
+  title     String
+  lessonId  String
+  lesson    Lesson     @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  questions Question[]
+
+  @@map("quizzes")
+}
+
+model Question {
+  id      String   @id @default(uuid())
+  text    String
+  quizId  String
+  quiz    Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  options Option[]
+
+  @@map("questions")
+}
+
+model Option {
+  id         String   @id @default(uuid())
+  text       String
+  isCorrect  Boolean  @default(false)
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@map("options")
+}
+
+model CourseReview {
+  id        String   @id @default(uuid())
+  rating    Int      // 1 to 5
+  comment   String?  @db.Text
+  courseId  String
+  userId    String
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([courseId, userId])
+  @@map("course_reviews")
+}

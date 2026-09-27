@@ -1,0 +1,11 @@
+src/modules/users/services/users.service.spec.ts(12,7): error TS2353: Object literal may only specify known properties, and 'findByEmail' does not exist in type 'Mocked<Partial<UsersRepository>>'.
+src/modules/users/services/users.service.spec.ts(36,19): error TS2339: Property 'findByEmail' does not exist on type 'Mocked<Partial<UsersRepository>>'.
+src/modules/users/services/users.service.spec.ts(42,17): error TS2339: Property 'createUser' does not exist on type 'UsersService'.
+src/modules/users/services/users.service.spec.ts(51,19): error TS2339: Property 'findByEmail' does not exist on type 'Mocked<Partial<UsersRepository>>'.
+src/modules/users/services/users.service.spec.ts(52,19): error TS2551: Property 'findRoleById' does not exist on type 'Mocked<Partial<UsersRepository>>'. Did you mean 'findById'?
+src/modules/users/services/users.service.spec.ts(55,17): error TS2339: Property 'createUser' does not exist on type 'UsersService'.
+src/modules/users/services/users.service.spec.ts(64,19): error TS2339: Property 'findByEmail' does not exist on type 'Mocked<Partial<UsersRepository>>'.
+src/modules/users/services/users.service.spec.ts(65,19): error TS2551: Property 'findRoleById' does not exist on type 'Mocked<Partial<UsersRepository>>'. Did you mean 'findById'?
+src/modules/users/services/users.service.spec.ts(69,19): error TS2339: Property 'createUser' does not exist on type 'Mocked<Partial<UsersRepository>>'.
+src/modules/users/services/users.service.spec.ts(87,36): error TS2339: Property 'createUser' does not exist on type 'UsersService'.
+src/modules/users/services/users.service.spec.ts(96,25): error TS2339: Property 'createUser' does not exist on type 'Mocked<Partial<UsersRepository>>'.
