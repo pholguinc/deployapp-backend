@@ -9,6 +9,12 @@ import { AchievementsModule } from './modules/achievements/achievements.module';
 import { CoursesModule } from './modules/courses/courses.module';
 import { LessonsModule } from './modules/lessons/lessons.module';
 import { CommentsModule } from './modules/comments/comments.module';
+import { ExamsModule } from './modules/exams/exams.module';
+import { ReportsModule } from './modules/reports/reports.module';
+import { SettingsModule } from './modules/settings/settings.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
+import { WebhooksModule } from './modules/webhooks/webhooks.module';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -21,6 +27,11 @@ import { CommentsModule } from './modules/comments/comments.module';
     CoursesModule,
     LessonsModule,
     CommentsModule,
+    ExamsModule,
+    ReportsModule,
+    SettingsModule,
+    NotificationsModule,
+    WebhooksModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import * as bcrypt from 'bcrypt';
@@ -19,10 +19,6 @@ const ROLES = [
   {
     name: 'SUPERADMIN',
     description: 'Superadministrador con acceso total a la plataforma',
-  },
-  {
-    name: 'ADMIN',
-    description: 'Administrador con permisos de gestión y configuración',
   },
   {
     name: 'DOCENTE',
@@ -107,37 +103,42 @@ const ACHIEVEMENTS = [
   },
 ];
 
-async function main() {
+async function seedRoles(): Promise<Map<string, string>> {
   console.log('🌱 Iniciando seeder de roles...');
 
   const rolesMap = new Map<string, string>();
 
-  for (const role of ROLES) {
-    const existingRole = await prisma.role.findUnique({
-      where: { name: role.name },
-    });
-
-    if (existingRole) {
-      rolesMap.set(existingRole.name, existingRole.id);
-      console.log(
-        `⏭️ Rol ya existe, omitiendo: ${existingRole.name} (UUID: ${existingRole.id})`,
-      );
-    } else {
-      const createdRole = await prisma.role.create({
-        data: {
-          name: role.name,
-          description: role.description,
-        },
+  await Promise.all(
+    ROLES.map(async (role) => {
+      const existingRole = await prisma.role.findUnique({
+        where: { name: role.name },
       });
-      rolesMap.set(createdRole.name, createdRole.id);
-      console.log(
-        `✅ Rol creado: ${createdRole.name} (UUID: ${createdRole.id})`,
-      );
-    }
-  }
+
+      if (existingRole) {
+        rolesMap.set(existingRole.name, existingRole.id);
+        console.log(
+          `⏭️ Rol ya existe, omitiendo: ${existingRole.name} (UUID: ${existingRole.id})`,
+        );
+      } else {
+        const createdRole = await prisma.role.create({
+          data: {
+            name: role.name,
+            description: role.description,
+          },
+        });
+        rolesMap.set(createdRole.name, createdRole.id);
+        console.log(
+          `✅ Rol creado: ${createdRole.name} (UUID: ${createdRole.id})`,
+        );
+      }
+    }),
+  );
 
   console.log('✨ Verificación de roles completada.');
+  return rolesMap;
+}
 
+async function seedSuperAdmin(rolesMap: Map<string, string>) {
   console.log('🌱 Iniciando seeder de usuario SUPERADMIN...');
 
   const superAdminRoleId = rolesMap.get('SUPERADMIN');
@@ -190,7 +191,9 @@ async function main() {
     console.log(`   ID: ${superAdminUser.id}`);
     console.log(`   Rol: ${superAdminUser.role?.name}`);
   }
+}
 
+async function seedTestUsers(rolesMap: Map<string, string>) {
   console.log('🌱 Iniciando seeder de usuarios de prueba...');
 
   const TEST_USERS = [
@@ -231,54 +234,64 @@ async function main() {
     });
   }
 
-  for (const testUser of TEST_USERS) {
-    const roleId = rolesMap.get(testUser.role);
-    if (!roleId) continue;
+  await Promise.all(
+    TEST_USERS.map(async (testUser) => {
+      const roleId = rolesMap.get(testUser.role);
+      if (!roleId) return;
 
-    const existingUser = await prisma.user.findUnique({
-      where: { email: testUser.email },
-    });
-
-    if (existingUser) {
-      console.log(
-        `⏭️ Usuario de prueba ya existe, omitiendo: ${testUser.email}`,
-      );
-    } else {
-      const passwordHash = await bcrypt.hash(testUser.password, 10);
-      const createdUser = await prisma.user.create({
-        data: {
-          email: testUser.email,
-          password: passwordHash,
-          name: testUser.name,
-          lastname: testUser.lastname,
-          phone: testUser.phone,
-          isActive: true,
-          roleId,
-        },
+      const existingUser = await prisma.user.findUnique({
+        where: { email: testUser.email },
       });
-      console.log(
-        `✅ Usuario de prueba creado: ${createdUser.email} (Rol: ${testUser.role})`,
-      );
-    }
-  }
 
+      if (existingUser) {
+        console.log(
+          `⏭️ Usuario de prueba ya existe, omitiendo: ${testUser.email}`,
+        );
+      } else {
+        const passwordHash = await bcrypt.hash(testUser.password, 10);
+        const createdUser = await prisma.user.create({
+          data: {
+            email: testUser.email,
+            password: passwordHash,
+            name: testUser.name,
+            lastname: testUser.lastname,
+            phone: testUser.phone,
+            isActive: true,
+            roleId,
+          },
+        });
+        console.log(
+          `✅ Usuario de prueba creado: ${createdUser.email} (Rol: ${testUser.role})`,
+        );
+      }
+    }),
+  );
+}
+
+async function seedAchievements() {
   console.log('🌱 Iniciando seeder de logros (achievements)...');
 
-  for (const achievement of ACHIEVEMENTS) {
-    const existing = await prisma.achievement.findFirst({
-      where: { name: achievement.name },
-    });
-
-    if (existing) {
-      console.log(`⏭️ Logro ya existe, omitiendo: ${existing.name}`);
-    } else {
-      const created = await prisma.achievement.create({
-        data: achievement,
+  await Promise.all(
+    ACHIEVEMENTS.map(async (achievement) => {
+      const existing = await prisma.achievement.findFirst({
+        where: { name: achievement.name },
       });
-      console.log(`✅ Logro creado: ${created.name} (orden: ${created.orden})`);
-    }
-  }
 
+      if (existing) {
+        console.log(`⏭️ Logro ya existe, omitiendo: ${existing.name}`);
+      } else {
+        const created = await prisma.achievement.create({
+          data: achievement,
+        });
+        console.log(
+          `✅ Logro creado: ${created.name} (orden: ${created.orden})`,
+        );
+      }
+    }),
+  );
+}
+
+async function seedCourse() {
   console.log('🌱 Iniciando seeder de Catálogo de Cursos...');
   const existingCourse = await prisma.course.findFirst({
     where: { title: 'Docker & Contenedores: De Cero a Experto' },
@@ -287,6 +300,10 @@ async function main() {
   if (existingCourse) {
     console.log(`⏭️ Curso ya existe, omitiendo: ${existingCourse.title}`);
   } else {
+    const docenteUser = await prisma.user.findUnique({
+      where: { email: 'docente@deployapp.com' },
+    });
+
     const course = await prisma.course.create({
       data: {
         title: 'Docker & Contenedores: De Cero a Experto',
@@ -297,7 +314,7 @@ async function main() {
         duration: '14h de video',
         lessonsCount: 36,
         rating: 4.9,
-        instructor: 'Pedro Holguín',
+        instructorId: docenteUser?.id,
         imageUrl:
           'https://images.unsplash.com/photo-1605745341112-85968b19335b?auto=format&fit=crop&q=80&w=2000',
         modules: {
@@ -420,6 +437,143 @@ async function main() {
 
     console.log(`✅ Curso creado: ${course.title}`);
   }
+}
+
+async function seedSettings() {
+  const DEFAULT_PLATFORM_SETTINGS = {
+    platformName: 'DeployLab Academy',
+    platformDescription:
+      'Plataforma de formación práctica en DevOps, Cloud Architecture y Desarrollo de Software.',
+    supportEmail: 'soporte@deploylab.io',
+    publicUrl: 'https://deploylab.io',
+    certificatePrefix: 'DPLB-CERT',
+    timezone: 'America/Bogota (UTC-5)',
+    language: 'Español (Latinoamérica)',
+    minPassingScore: 14,
+    maxExamAttempts: 3,
+    minAttendancePercent: 80,
+    autoIssueCertificates: true,
+    sequentialLessons: true,
+    allowStudentComments: true,
+    allowPublicRegistration: true,
+    requireEmailVerification: false,
+    sessionTimeoutHours: 24,
+    notifyOnStudentPass: true,
+    notifyOnNewRegistration: true,
+    notifyOnCertificateIssued: true,
+  };
+
+  const SETTINGS_SEEDS: Array<{
+    key: string;
+    description: string;
+    value: Prisma.InputJsonValue;
+  }> = [
+    {
+      key: 'platform_settings',
+      description:
+        'Configuración global y unificada de la plataforma DeployLab',
+      value: DEFAULT_PLATFORM_SETTINGS,
+    },
+    {
+      key: 'general_settings',
+      description:
+        'Parámetros institucionales visibles en certificados, portal y correos',
+      value: {
+        platformName: DEFAULT_PLATFORM_SETTINGS.platformName,
+        platformDescription: DEFAULT_PLATFORM_SETTINGS.platformDescription,
+        supportEmail: DEFAULT_PLATFORM_SETTINGS.supportEmail,
+        publicUrl: DEFAULT_PLATFORM_SETTINGS.publicUrl,
+        certificatePrefix: DEFAULT_PLATFORM_SETTINGS.certificatePrefix,
+        timezone: DEFAULT_PLATFORM_SETTINGS.timezone,
+        language: DEFAULT_PLATFORM_SETTINGS.language,
+      },
+    },
+    {
+      key: 'academic_settings',
+      description:
+        'Criterios de evaluación, reglas de cursado y emisión de certificados',
+      value: {
+        minPassingScore: DEFAULT_PLATFORM_SETTINGS.minPassingScore,
+        maxExamAttempts: DEFAULT_PLATFORM_SETTINGS.maxExamAttempts,
+        minAttendancePercent: DEFAULT_PLATFORM_SETTINGS.minAttendancePercent,
+        autoIssueCertificates: DEFAULT_PLATFORM_SETTINGS.autoIssueCertificates,
+        sequentialLessons: DEFAULT_PLATFORM_SETTINGS.sequentialLessons,
+        allowStudentComments: DEFAULT_PLATFORM_SETTINGS.allowStudentComments,
+      },
+    },
+    {
+      key: 'security_settings',
+      description:
+        'Políticas de acceso, registro público y expiración de sesiones',
+      value: {
+        allowPublicRegistration:
+          DEFAULT_PLATFORM_SETTINGS.allowPublicRegistration,
+        requireEmailVerification:
+          DEFAULT_PLATFORM_SETTINGS.requireEmailVerification,
+        sessionTimeoutHours: DEFAULT_PLATFORM_SETTINGS.sessionTimeoutHours,
+        encryptionAlgorithm: 'Bcrypt (Salt rounds = 10)',
+        tokenFormat: 'JSON Web Tokens (JWT) + cookies HttpOnly',
+        auditedRoles: ['ADMINISTRADOR', 'DOCENTE', 'ALUMNO'],
+      },
+    },
+    {
+      key: 'notification_settings',
+      description:
+        'Eventos del sistema que disparan notificaciones automáticas',
+      value: {
+        notifyOnNewRegistration:
+          DEFAULT_PLATFORM_SETTINGS.notifyOnNewRegistration,
+        notifyOnStudentPass: DEFAULT_PLATFORM_SETTINGS.notifyOnStudentPass,
+        notifyOnCertificateIssued:
+          DEFAULT_PLATFORM_SETTINGS.notifyOnCertificateIssued,
+      },
+    },
+  ];
+
+  await Promise.all(
+    SETTINGS_SEEDS.map(async (item) => {
+      const setting = await prisma.setting.upsert({
+        where: { key: item.key },
+        update: {
+          value: item.value,
+          description: item.description,
+        },
+        create: {
+          key: item.key,
+          value: item.value,
+          description: item.description,
+        },
+      });
+      console.log(`✅ Configuración sembrada: "${setting.key}"`);
+    }),
+  );
+
+  const superAdmin = await prisma.user.findFirst({
+    where: { email: 'superadmin@deployapp.com' },
+  });
+
+  if (superAdmin) {
+    await prisma.user.update({
+      where: { id: superAdmin.id },
+      data: {
+        phone: '+51 999 888 777',
+        name: 'Super Administrador',
+        lastname: 'Root',
+      },
+    });
+    console.log(
+      '✅ Perfil del Super Administrador actualizado con teléfono (+51 999 888 777).',
+    );
+  }
+}
+
+async function main() {
+  const rolesMap = await seedRoles();
+  await seedSuperAdmin(rolesMap);
+  await seedTestUsers(rolesMap);
+  await seedAchievements();
+  await seedCourse();
+  await seedSettings();
 
   console.log('✨ Seeder completado exitosamente.');
 }

@@ -44,8 +44,7 @@ export class CommentsService {
 
   async remove(id: string, userId: string, userRole: string) {
     const comment = await this.findOne(id);
-    const isAdmin =
-      userRole === 'ADMIN' || userRole === 'SUPERADMIN';
+    const isAdmin = userRole === 'ADMIN' || userRole === 'SUPERADMIN';
     if (comment.userId !== userId && !isAdmin) {
       throw new ForbiddenException('You can only delete your own comments');
     }

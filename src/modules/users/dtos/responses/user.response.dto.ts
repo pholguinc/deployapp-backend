@@ -6,6 +6,15 @@ class RoleDto {
 
   @ApiProperty()
   name: string;
+
+  @ApiPropertyOptional()
+  description?: string | null;
+
+  @ApiPropertyOptional()
+  createdAt?: Date;
+
+  @ApiPropertyOptional()
+  updatedAt?: Date;
 }
 
 export class UserResponseDto {
@@ -17,6 +26,12 @@ export class UserResponseDto {
 
   @ApiPropertyOptional()
   name?: string | null;
+
+  @ApiPropertyOptional()
+  lastname?: string | null;
+
+  @ApiPropertyOptional()
+  phone?: string | null;
 
   @ApiProperty()
   isActive: boolean;
@@ -30,7 +45,14 @@ export class UserResponseDto {
   @ApiProperty()
   updatedAt: Date;
 
-  constructor(partial: Partial<UserResponseDto>) {
+  constructor(
+    partial: Partial<UserResponseDto> & {
+      password?: string;
+      roleId?: string | null;
+    },
+  ) {
     Object.assign(this, partial);
+    delete (this as { password?: string }).password;
+    delete (this as { roleId?: string | null }).roleId;
   }
 }

@@ -1,4 +1,11 @@
-import { IsString, IsOptional, IsInt, IsNumber, IsBoolean, Min } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsInt,
+  IsNumber,
+  IsBoolean,
+  Min,
+} from 'class-validator';
 import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -17,7 +24,9 @@ export class CreateCourseDto {
   @IsString()
   category?: string;
 
-  @ApiPropertyOptional({ description: 'Course level (e.g., Beginner, Intermediate)' })
+  @ApiPropertyOptional({
+    description: 'Course level (e.g., Beginner, Intermediate)',
+  })
   @IsOptional()
   @IsString()
   level?: string;
@@ -43,7 +52,10 @@ export class CreateCourseDto {
   @IsBoolean()
   isActive?: boolean;
 
-  @ApiPropertyOptional({ description: 'Course features or benefits', type: [String] })
+  @ApiPropertyOptional({
+    description: 'Course features or benefits',
+    type: [String],
+  })
   @IsOptional()
   @IsString({ each: true })
   features?: string[];

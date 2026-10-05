@@ -26,8 +26,9 @@ export class AuthService {
     dto: LoginDto,
     metadata?: SessionMetadata,
   ): Promise<AuthResponseDto> {
-    const user: UserWithRole | null =
-      await this.authRepository.findUserByEmail(dto.email.toLowerCase().trim());
+    const user: UserWithRole | null = await this.authRepository.findUserByEmail(
+      dto.email.toLowerCase().trim(),
+    );
     if (!user?.isActive) {
       throw new UnauthorizedException('Credenciales inválidas');
     }

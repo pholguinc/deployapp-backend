@@ -10,21 +10,26 @@ datasource db {
 }
 
 model User {
-  id        String       @id @default(uuid())
-  email     String       @unique
-  password  String
-  name      String?
-  lastname  String?
-  phone     String?
-  isActive  Boolean      @default(true)
-  roleId    String?
-  role      Role?        @relation(fields: [roleId], references: [id], onDelete: SetNull)
-  sessions  Session[]
-  comments  Comment[]
-  courses   UserCourse[]
-  courseReviews CourseReview[]
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
+  id               String              @id @default(uuid())
+  email            String              @unique
+  password         String
+  name             String?
+  lastname         String?
+  phone            String?
+  isActive         Boolean             @default(true)
+  roleId           String?
+  role             Role?               @relation(fields: [roleId], references: [id], onDelete: SetNull)
+  sessions         Session[]
+  comments         Comment[]
+  courses          UserCourse[]
+  lessons          UserLesson[]
+  taughtCourses    Course[]            @relation("CourseInstructor")
+  courseReviews    CourseReview[]
+  examAttempts     FinalExamAttempt[]
+  certificates     Certificate[]
+  notifications    Notification[]
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
 
   @@map("users")
 }
@@ -80,16 +85,19 @@ model Course {
   duration     String?
   lessonsCount Int      @default(0)
   rating       Float    @default(0)
-  instructor   String?
+  instructorId String?
+  instructor   User?    @relation("CourseInstructor", fields: [instructorId], references: [id], onDelete: SetNull)
   imageUrl     String?
   features     String[]
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  modules Module[]
-  users   UserCourse[]
-  reviews CourseReview[]
+  modules    Module[]
+  users      UserCourse[]
+  reviews    CourseReview[]
+  finalExam  FinalExam?
+  certificates Certificate[]
 
   @@map("courses")
 }
@@ -107,6 +115,20 @@ model UserCourse {
 
   @@id([userId, courseId])
   @@map("user_courses")
+}
+
+model UserLesson {
+  userId    String
+  lessonId  String
+  completed Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@id([userId, lessonId])
+  @@map("user_lessons")
 }
 
 model Module {
@@ -132,6 +154,7 @@ model Lesson {
   resources Resource[]
   comments  Comment[]
   quizzes   Quiz[]
+  userLessons UserLesson[]
 
   @@map("lessons")
 }
@@ -194,7 +217,7 @@ model Option {
 
 model CourseReview {
   id        String   @id @default(uuid())
-  rating    Int      // 1 to 5
+  rating    Int // 1 to 5
   comment   String?  @db.Text
   courseId  String
   userId    String
@@ -205,4 +228,97 @@ model CourseReview {
 
   @@unique([courseId, userId])
   @@map("course_reviews")
+}
+
+// --- FINAL EXAM ---
+
+model FinalExam {
+  id        String              @id @default(uuid())
+  courseId  String              @unique
+  course    Course              @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title     String
+  questions FinalExamQuestion[]
+  attempts  FinalExamAttempt[]
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+
+  @@map("final_exams")
+}
+
+model FinalExamQuestion {
+  id       String            @id @default(uuid())
+  text     String
+  examId   String
+  exam     FinalExam         @relation(fields: [examId], references: [id], onDelete: Cascade)
+  options  FinalExamOption[]
+
+  @@map("final_exam_questions")
+}
+
+model FinalExamOption {
+  id         String            @id @default(uuid())
+  text       String
+  isCorrect  Boolean           @default(false)
+  questionId String
+  question   FinalExamQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@map("final_exam_options")
+}
+
+model FinalExamAttempt {
+  id        String    @id @default(uuid())
+  userId    String
+  examId    String
+  score     Float     // e.g. 18.5 out of 20
+  total     Int       // total questions
+  passed    Boolean   @default(false)
+  createdAt DateTime  @default(now())
+
+  user User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exam FinalExam  @relation(fields: [examId], references: [id], onDelete: Cascade)
+
+  @@map("final_exam_attempts")
+}
+
+model Certificate {
+  id        String   @id @default(uuid())
+  userId    String
+  courseId  String
+  score     Float
+  issuedAt  DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, courseId])
+  @@map("certificates")
+}
+
+model Setting {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       Json
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("settings")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String?
+  type      String   @default("COURSE_COMPLETED")
+  title     String
+  message   String
+  data      Json?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([read])
+  @@index([createdAt])
+  @@map("notifications")
 }

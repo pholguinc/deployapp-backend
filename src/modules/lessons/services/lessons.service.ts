@@ -55,6 +55,16 @@ export class LessonsService {
     return await this.lessonsRepository.remove(id);
   }
 
+  // --- USER LESSON COMPLETION ---
+  async toggleLessonComplete(userId: string, lessonId: string) {
+    await this.findOne(lessonId); // ensure exists
+    const isCompleted = await this.lessonsRepository.toggleLessonComplete(
+      userId,
+      lessonId,
+    );
+    return { completed: isCompleted };
+  }
+
   // --- VIDEO UPLOAD ---
   async uploadVideo(lessonId: string, file: Express.Multer.File) {
     const lesson = await this.lessonsRepository.findByIdWithCourseId(lessonId);

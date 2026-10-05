@@ -34,11 +34,13 @@ export class UsersController {
   @ApiResponse({ status: 200, type: PaginatedUsersResponseDto })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'role', required: false, type: String })
   findAll(
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
+    @Query('role') role?: string,
   ) {
-    return this.usersService.findAll(page, limit);
+    return this.usersService.findAll(page, limit, role);
   }
 
   @Get(':id')

@@ -41,7 +41,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
         errorDetail = resp.error;
       }
     } else if (exception instanceof Error) {
-      message = exception.message;
+      console.error('[Internal Server Error]:', exception.message);
+      message = 'Ocurrió un error inesperado en el servidor';
     }
 
     response.status(statusCode).json({

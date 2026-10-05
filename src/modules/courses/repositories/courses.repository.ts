@@ -29,6 +29,9 @@ export class CoursesRepository {
             },
           },
           _count: { select: { users: true } },
+          instructor: {
+            select: { id: true, name: true, lastname: true, email: true },
+          },
         },
       }),
       this.prisma.course.count(),
@@ -54,6 +57,9 @@ export class CoursesRepository {
           },
         },
         _count: { select: { users: true } },
+        instructor: {
+          select: { id: true, name: true, lastname: true, email: true },
+        },
       },
     });
   }
@@ -155,8 +161,60 @@ export class CoursesRepository {
   }
 
   async getUserCourseProgress(userId: string, courseId: string) {
-    return this.prisma.userCourse.findUnique({
+    const userCourse = await this.prisma.userCourse.findUnique({
+      where: {
+        userId_courseId: {
+          userId,
+          courseId,
+        },
+      },
+    });
+
+    if (!userCourse) {
+      return null;
+    }
+
+    const where: Prisma.UserLessonWhereInput = {
+      userId,
+      completed: true,
+      lesson: {
+        is: {
+          module: {
+            is: {
+              courseId,
+            },
+          },
+        },
+      },
+    };
+
+    const completedLessons = await this.prisma.userLesson.findMany({
+      where,
+      select: {
+        lessonId: true,
+      },
+    });
+
+    return {
+      ...userCourse,
+      completedLessons: completedLessons.map(({ lessonId }) => lessonId),
+    };
+  }
+
+  async countCourseLessons(courseId: string): Promise<number> {
+    return this.prisma.lesson.count({
+      where: {
+        module: {
+          courseId,
+        },
+      },
+    });
+  }
+
+  async markCourseCompleted(userId: string, courseId: string) {
+    return this.prisma.userCourse.update({
       where: { userId_courseId: { userId, courseId } },
+      data: { status: 'COMPLETED', progress: 100 },
     });
   }
 }

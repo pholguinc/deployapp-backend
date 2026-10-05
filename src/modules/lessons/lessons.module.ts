@@ -12,4 +12,3 @@ import { UploadModule } from '../upload/upload.module';
   exports: [LessonsService],
 })
 export class LessonsModule {}
-

@@ -4,7 +4,10 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
-import { UsersRepository } from '../repositories/users.repository';
+import {
+  UsersRepository,
+  UserWithRole,
+} from '../repositories/users.repository';
 import { CreateUserRequestDto } from '../dtos/requests/create-user.request.dto';
 import { UpdateUserRequestDto } from '../dtos/requests/update-user.request.dto';
 import { UpdateUserStatusRequestDto } from '../dtos/requests/update-user-status.request.dto';
@@ -16,6 +19,18 @@ import { Prisma } from '@prisma/client';
 export class UsersService {
   constructor(private readonly usersRepository: UsersRepository) {}
 
+  private mapToResponse(user: UserWithRole): UserResponseDto {
+    const {
+      password: _password,
+      roleId: _roleId,
+      ...userWithoutSensitiveFields
+    } = user;
+    return new UserResponseDto({
+      ...userWithoutSensitiveFields,
+      role: user.role,
+    });
+  }
+
   async create(data: CreateUserRequestDto): Promise<UserResponseDto> {
     const saltRounds = 10;
     const passwordHash = await bcrypt.hash(data.password, saltRounds);
@@ -24,6 +39,8 @@ export class UsersService {
       email: data.email,
       password: passwordHash,
       name: data.name,
+      lastname: data.lastname,
+      phone: data.phone,
       isActive: data.isActive ?? true,
     };
 
@@ -33,10 +50,7 @@ export class UsersService {
 
     try {
       const user = await this.usersRepository.create(createData);
-      return new UserResponseDto({
-        ...user,
-        role: user.role,
-      });
+      return this.mapToResponse(user);
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -51,20 +65,19 @@ export class UsersService {
   async findAll(
     page: number = 1,
     limit: number = 10,
+    role?: string,
   ): Promise<PaginatedUsersResponseDto> {
     const skip = (page - 1) * limit;
-    const [users, totalItems] = await this.usersRepository.findAll(skip, limit);
+    const [users, totalItems] = await this.usersRepository.findAll(
+      skip,
+      limit,
+      role,
+    );
 
     const totalPages = Math.max(1, Math.ceil(totalItems / limit));
 
     return {
-      data: users.map(
-        (u) =>
-          new UserResponseDto({
-            ...u,
-            role: u.role,
-          }),
-      ),
+      data: users.map((u) => this.mapToResponse(u)),
       meta: {
         firstPage: 1,
         lastPage: totalPages,
@@ -80,10 +93,7 @@ export class UsersService {
     if (!user) {
       throw new NotFoundException(`Usuario con ID ${id} no encontrado`);
     }
-    return new UserResponseDto({
-      ...user,
-      role: user.role,
-    });
+    return this.mapToResponse(user);
   }
 
   async update(
@@ -95,6 +105,8 @@ export class UsersService {
     const updateData: Prisma.UserUpdateInput = {
       email: data.email,
       name: data.name,
+      lastname: data.lastname,
+      phone: data.phone,
       isActive: data.isActive,
     };
 
@@ -111,10 +123,7 @@ export class UsersService {
 
     try {
       const user = await this.usersRepository.update(id, updateData);
-      return new UserResponseDto({
-        ...user,
-        role: user.role,
-      });
+      return this.mapToResponse(user);
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -135,9 +144,6 @@ export class UsersService {
     const user = await this.usersRepository.update(id, {
       isActive: data.isActive,
     });
-    return new UserResponseDto({
-      ...user,
-      role: user.role,
-    });
+    return this.mapToResponse(user);
   }
 }

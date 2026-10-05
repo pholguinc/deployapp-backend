@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { CoursesRepository } from '../repositories/courses.repository';
 import { CreateCourseDto } from '../dtos/create-course.dto';
 import { UpdateCourseDto } from '../dtos/update-course.dto';
@@ -22,14 +23,19 @@ export class CoursesService {
   ) {}
 
   async uploadImage(id: string, file: Express.Multer.File) {
-    const course = await this.findOne(id);
+    await this.findOne(id);
     const imageUrl = await this.uploadService.uploadFile(file, 'courses');
     return await this.coursesRepository.update(id, { imageUrl });
   }
 
   // --- COURSES ---
   async create(createCourseDto: CreateCourseDto) {
-    return await this.coursesRepository.create(createCourseDto);
+    const { instructor, ...rest } = createCourseDto;
+    const data: Prisma.CourseCreateInput = {
+      ...rest,
+      instructor: instructor ? { connect: { id: instructor } } : undefined,
+    };
+    return await this.coursesRepository.create(data);
   }
 
   async findAll(page: number = 1, limit: number = 10) {
@@ -84,7 +90,12 @@ export class CoursesService {
 
   async update(id: string, updateCourseDto: UpdateCourseDto) {
     await this.findOne(id);
-    return await this.coursesRepository.update(id, updateCourseDto);
+    const { instructor, ...rest } = updateCourseDto;
+    const data: Prisma.CourseUpdateInput = {
+      ...rest,
+      instructor: instructor ? { connect: { id: instructor } } : undefined,
+    };
+    return await this.coursesRepository.update(id, data);
   }
 
   async remove(id: string) {
@@ -148,7 +159,7 @@ export class CoursesService {
       userId,
       courseId,
     );
-    if (!enrollment || enrollment.status !== 'COMPLETED') {
+    if (enrollment?.status !== 'COMPLETED') {
       throw new BadRequestException(
         'Only users who have completed the course can review it.',
       );

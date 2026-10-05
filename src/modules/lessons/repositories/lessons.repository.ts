@@ -58,6 +58,36 @@ export class LessonsRepository {
     return this.prisma.lesson.delete({ where: { id } });
   }
 
+  // --- USER LESSON COMPLETION ---
+  async toggleLessonComplete(
+    userId: string,
+    lessonId: string,
+  ): Promise<boolean> {
+    const existing = await this.prisma.userLesson.findUnique({
+      where: { userId_lessonId: { userId, lessonId } },
+    });
+
+    if (existing) {
+      if (existing.completed) {
+        await this.prisma.userLesson.delete({
+          where: { userId_lessonId: { userId, lessonId } },
+        });
+        return false;
+      } else {
+        await this.prisma.userLesson.update({
+          where: { userId_lessonId: { userId, lessonId } },
+          data: { completed: true },
+        });
+        return true;
+      }
+    } else {
+      await this.prisma.userLesson.create({
+        data: { userId, lessonId, completed: true },
+      });
+      return true;
+    }
+  }
+
   // --- RESOURCES ---
   async createResource(data: Prisma.ResourceCreateInput): Promise<Resource> {
     return await this.prisma.resource.create({ data });
@@ -73,7 +103,10 @@ export class LessonsRepository {
     return this.prisma.resource.findUnique({ where: { id } });
   }
 
-  async updateResource(id: string, data: Prisma.ResourceUpdateInput): Promise<Resource> {
+  async updateResource(
+    id: string,
+    data: Prisma.ResourceUpdateInput,
+  ): Promise<Resource> {
     return this.prisma.resource.update({ where: { id }, data });
   }
 

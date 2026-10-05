@@ -9,6 +9,7 @@ import {
   UseGuards,
   UseInterceptors,
   UploadedFile,
+  Request,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
@@ -30,6 +31,7 @@ import {
   UpdateQuestionDto,
   UpdateOptionDto,
 } from '../dtos/update-quiz.dto';
+import type { RequestUser } from 'src/common/interfaces/request-user.interface';
 
 @ApiTags('Lessons')
 @ApiBearerAuth()
@@ -71,6 +73,16 @@ export class LessonsController {
   @ApiOperation({ summary: 'Delete lesson by ID' })
   remove(@Param('id') id: string) {
     return this.lessonsService.remove(id);
+  }
+
+  // --- LESSON COMPLETION ---
+  @Post(':id/toggle-complete')
+  @ApiOperation({
+    summary: 'Toggle completion status of a lesson for the current user',
+  })
+  toggleComplete(@Request() req: RequestUser, @Param('id') id: string) {
+    const userId = req.user.id;
+    return this.lessonsService.toggleLessonComplete(userId, id);
   }
 
   // --- VIDEO ---
