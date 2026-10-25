@@ -1,32 +1,31 @@
-import {
-  BadRequestException,
-  ConflictException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
-import type { IndicatorRecord, IndicatorSheet } from '@prisma/client';
+import { Injectable } from '@nestjs/common';
 import { IndicatorsRepository } from '../repositories/indicators.repository';
-import {
-  CreateIndicatorRecordDto,
-  UpdateIndicatorRecordDto,
-  UpdateIndicatorSheetDto,
-} from '../dtos/indicator.dto';
 import {
   DEFAULT_COMPANY,
   INDICATOR_DEFINITIONS,
   STUDY_VARIABLE,
-  TEST_TYPES,
-  TEST_TYPE_LABELS,
-  compareIndicator,
   computeIndicatorValue,
-  findIndicatorDefinition,
+  round2,
   type IndicatorDefinition,
-  type TestType,
 } from '../constants/indicator-definitions';
 
 type ExamAttempt = Awaited<
   ReturnType<IndicatorsRepository['findExamAttempts']>
 >[number];
+
+// Medición de un intento de examen para un indicador
+export interface AppMetricRow {
+  attemptId: string;
+  userId: string;
+  studentName: string;
+  studentEmail: string;
+  courseTitle: string;
+  date: Date;
+  submittedAt: Date;
+  numerator: number;
+  denominator: number;
+  value: number | null;
+}
 
 // Numerador / denominador que aporta cada intento de examen a cada indicador
 const ATTEMPT_METRICS: Record<
@@ -54,29 +53,20 @@ const ATTEMPT_METRICS: Record<
 export class IndicatorsService {
   constructor(private readonly indicatorsRepository: IndicatorsRepository) {}
 
-  // ── LECTURA ────────────────────────────────────────────────────────────────
-
-  /** Fichas de registro pre/post-test, comparación y datos de la aplicación. */
+  /**
+   * Fichas de registro de los indicadores: se calculan como un reporte,
+   * aplicando la fórmula de cada indicador a las evaluaciones rendidas en la app.
+   */
   async getIndicatorsReport() {
-    const [sheets, attempts] = await Promise.all([
-      this.indicatorsRepository.findAllSheets(),
-      this.indicatorsRepository.findExamAttempts(),
-    ]);
+    const attempts = await this.indicatorsRepository.findExamAttempts();
 
     const indicators = INDICATOR_DEFINITIONS.map((definition) => {
-      const pre = this.buildSheet(definition, 'PRE_TEST', sheets);
-      const post = this.buildSheet(definition, 'POST_TEST', sheets);
-
+      const app = this.buildAppMetrics(definition, attempts);
       return {
         ...definition,
         variable: STUDY_VARIABLE,
-        sheets: { PRE_TEST: pre, POST_TEST: post },
-        comparison: compareIndicator(
-          definition,
-          pre.summary.value,
-          post.summary.value,
-        ),
-        app: this.buildAppMetrics(definition, attempts),
+        sheet: this.buildSheet(definition, app.rows),
+        app,
       };
     });
 
@@ -119,118 +109,55 @@ export class IndicatorsService {
     };
   }
 
-  // ── ESCRITURA ──────────────────────────────────────────────────────────────
-
-  async updateSheet(
-    code: string,
-    testType: string,
-    dto: UpdateIndicatorSheetDto,
-  ) {
-    this.assertSheetKey(code, testType);
-    return await this.indicatorsRepository.upsertSheet(code, testType, {
-      company: dto.company,
-      startDate: dto.startDate ? new Date(dto.startDate) : undefined,
-      endDate: dto.endDate ? new Date(dto.endDate) : undefined,
-    });
-  }
-
-  async createRecord(
-    code: string,
-    testType: string,
-    dto: CreateIndicatorRecordDto,
-  ) {
-    const definition = this.assertSheetKey(code, testType);
-    const sheet = await this.indicatorsRepository.upsertSheet(code, testType);
-
-    const itemNumber =
-      dto.itemNumber ??
-      (await this.indicatorsRepository.getMaxItemNumber(sheet.id)) + 1;
-    await this.assertItemAvailable(sheet.id, itemNumber);
-    this.assertValidRatio(definition, dto.numerator, dto.denominator);
-
-    const record = await this.indicatorsRepository.createRecord({
-      sheetId: sheet.id,
-      itemNumber,
-      startDate: new Date(dto.startDate),
-      endDate: dto.endDate ? new Date(dto.endDate) : null,
-      group: dto.group ?? null,
-      numerator: dto.numerator,
-      denominator: dto.denominator,
-      notes: dto.notes ?? null,
-    });
-    return this.toRecordResponse(definition, record);
-  }
-
-  async updateRecord(id: string, dto: UpdateIndicatorRecordDto) {
-    const existing = await this.indicatorsRepository.findRecordById(id);
-    if (!existing) {
-      throw new NotFoundException(
-        `Registro de indicador #${id} no encontrado.`,
-      );
-    }
-    const definition = findIndicatorDefinition(existing.sheet.code)!;
-
-    if (dto.itemNumber && dto.itemNumber !== existing.itemNumber) {
-      await this.assertItemAvailable(existing.sheetId, dto.itemNumber);
-    }
-    this.assertValidRatio(
-      definition,
-      dto.numerator ?? existing.numerator,
-      dto.denominator ?? existing.denominator,
-    );
-
-    const record = await this.indicatorsRepository.updateRecord(id, {
-      itemNumber: dto.itemNumber,
-      startDate: dto.startDate ? new Date(dto.startDate) : undefined,
-      endDate: dto.endDate ? new Date(dto.endDate) : undefined,
-      group: dto.group,
-      numerator: dto.numerator,
-      denominator: dto.denominator,
-      notes: dto.notes,
-    });
-    return this.toRecordResponse(definition, record);
-  }
-
-  async deleteRecord(id: string) {
-    const existing = await this.indicatorsRepository.findRecordById(id);
-    if (!existing) {
-      throw new NotFoundException(
-        `Registro de indicador #${id} no encontrado.`,
-      );
-    }
-    await this.indicatorsRepository.deleteRecord(id);
-    return { success: true };
-  }
-
   // ── HELPERS ────────────────────────────────────────────────────────────────
 
-  private buildSheet(
-    definition: IndicatorDefinition,
-    testType: TestType,
-    sheets: (IndicatorSheet & { records: IndicatorRecord[] })[],
-  ) {
-    const sheet = sheets.find(
-      (s) => s.code === definition.code && s.testType === testType,
-    );
-    const records = (sheet?.records ?? []).map((r) =>
-      this.toRecordResponse(definition, r),
-    );
+  /**
+   * Ficha de registro generada con los datos de la app: cada ítem agrupa las
+   * evaluaciones de una misma fecha y aplica la fórmula del indicador.
+   */
+  private buildSheet(definition: IndicatorDefinition, rows: AppMetricRow[]) {
+    const byDate = new Map<string, AppMetricRow[]>();
+    for (const row of rows) {
+      const key = row.date.toISOString().slice(0, 10);
+      byDate.set(key, [...(byDate.get(key) ?? []), row]);
+    }
 
-    // Total / Promedio de la ficha: Σ numerador / Σ denominador (ponderado por periodo)
-    const totalNumerator = records.reduce((acc, r) => acc + r.numerator, 0);
-    const totalDenominator = records.reduce((acc, r) => acc + r.denominator, 0);
+    const records = [...byDate.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([day, group], i) => {
+        const numerator = round2(
+          group.reduce((acc, r) => acc + r.numerator, 0),
+        );
+        const denominator = round2(
+          group.reduce((acc, r) => acc + r.denominator, 0),
+        );
+        // El periodo va desde el primer envío del grupo hasta su fecha de evaluación
+        const firstSubmission = group
+          .map((r) => r.submittedAt.toISOString().slice(0, 10))
+          .reduce((min, d) => (d < min ? d : min), day);
+        return {
+          id: `${definition.code}-${day}`,
+          itemNumber: i + 1,
+          startDate: new Date(firstSubmission),
+          endDate: new Date(day),
+          participants: new Set(group.map((r) => r.userId)).size,
+          numerator,
+          denominator,
+          value: computeIndicatorValue(definition, numerator, denominator),
+        };
+      });
+
+    const totalNumerator = round2(
+      records.reduce((acc, r) => acc + r.numerator, 0),
+    );
+    const totalDenominator = round2(
+      records.reduce((acc, r) => acc + r.denominator, 0),
+    );
 
     return {
-      id: sheet?.id ?? null,
-      testType,
-      testTypeLabel: TEST_TYPE_LABELS[testType],
-      company: sheet?.company ?? DEFAULT_COMPANY,
-      startDate: sheet?.startDate ?? records[0]?.startDate ?? null,
-      endDate:
-        sheet?.endDate ??
-        records[records.length - 1]?.endDate ??
-        records[records.length - 1]?.startDate ??
-        null,
+      company: DEFAULT_COMPANY,
+      startDate: records[0]?.startDate ?? null,
+      endDate: records[records.length - 1]?.endDate ?? null,
       records,
       summary: {
         periods: records.length,
@@ -250,7 +177,7 @@ export class IndicatorsService {
     attempts: ExamAttempt[],
   ) {
     const metric = ATTEMPT_METRICS[definition.code];
-    const rows = attempts.flatMap((a) => {
+    const rows = attempts.flatMap((a): AppMetricRow[] => {
       const m = metric(a);
       if (!m) return [];
       return [
@@ -262,7 +189,9 @@ export class IndicatorsService {
             a.user.email,
           studentEmail: a.user.email,
           courseTitle: a.exam.course.title,
+          // Fecha de evaluación: calificación del práctico o envío del teórico
           date: a.practicalGradedAt ?? a.updatedAt ?? a.createdAt,
+          submittedAt: a.createdAt,
           numerator: m.numerator,
           denominator: m.denominator,
           value: computeIndicatorValue(definition, m.numerator, m.denominator),
@@ -287,66 +216,5 @@ export class IndicatorsService {
         ),
       },
     };
-  }
-
-  private toRecordResponse(
-    definition: IndicatorDefinition,
-    record: IndicatorRecord,
-  ) {
-    return {
-      id: record.id,
-      itemNumber: record.itemNumber,
-      startDate: record.startDate,
-      endDate: record.endDate,
-      group: record.group,
-      numerator: record.numerator,
-      denominator: record.denominator,
-      value: computeIndicatorValue(
-        definition,
-        record.numerator,
-        record.denominator,
-      ),
-      notes: record.notes,
-    };
-  }
-
-  private assertSheetKey(code: string, testType: string): IndicatorDefinition {
-    const definition = findIndicatorDefinition(code);
-    if (!definition) {
-      throw new BadRequestException(
-        `Indicador ${code} no válido. Use: ${INDICATOR_DEFINITIONS.map((d) => d.code).join(', ')}.`,
-      );
-    }
-    if (!TEST_TYPES.includes(testType as TestType)) {
-      throw new BadRequestException(
-        `Tipo de prueba ${testType} no válido. Use: ${TEST_TYPES.join(', ')}.`,
-      );
-    }
-    return definition;
-  }
-
-  private async assertItemAvailable(sheetId: string, itemNumber: number) {
-    const taken = await this.indicatorsRepository.findRecordByItem(
-      sheetId,
-      itemNumber,
-    );
-    if (taken) {
-      throw new ConflictException(
-        `Ya existe el ítem ${itemNumber} en esta ficha de registro.`,
-      );
-    }
-  }
-
-  private assertValidRatio(
-    definition: IndicatorDefinition,
-    numerator: number,
-    denominator: number,
-  ) {
-    // En los indicadores porcentuales el numerador no puede superar al denominador
-    if (definition.unit === '%' && numerator > denominator) {
-      throw new BadRequestException(
-        `${definition.numeratorLabel} no puede ser mayor que ${definition.denominatorLabel.toLowerCase()}.`,
-      );
-    }
   }
 }

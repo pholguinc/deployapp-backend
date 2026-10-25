@@ -3462,25 +3462,11 @@ async function seedSettings() {
   }
 }
 
-// ─── Fichas de registro de indicadores (Anexo 2 de la tesis) ──────────────────
-// Filas: [inicio, fin, grupo, numerador, denominador]
+// ─── Periodos de medición de los indicadores (Anexo 2 de la tesis) ────────────
+// Los indicadores se calculan con los intentos de examen de la aplicación.
+// Filas: [inicio, fin, grupo]
 // IND-01: respuestas correctas / total de ítems · IND-02: tiempo total (min) / tareas evaluadas
 // IND-03: incidencias resueltas / incidencias inyectadas
-
-type IndicatorSeedRow = [string, string, string, number, number];
-
-const PRE_TEST_PERIODS: [string, string, string][] = [
-  ['2025-10-06', '2025-10-20', 'P001-P017'],
-  ['2025-10-21', '2025-11-03', 'P018-P034'],
-  ['2025-11-04', '2025-11-17', 'P035-P051'],
-  ['2025-11-18', '2025-12-01', 'P052-P068'],
-  ['2025-12-02', '2025-12-16', 'P069-P085'],
-  ['2025-12-17', '2025-12-31', 'P086-P102'],
-  ['2026-01-02', '2026-01-15', 'P103-P119'],
-  ['2026-01-16', '2026-01-29', 'P120-P136'],
-  ['2026-01-30', '2026-02-12', 'P137-P153'],
-  ['2026-02-13', '2026-02-26', 'P154-P169'],
-];
 
 const POST_TEST_PERIODS: [string, string, string][] = [
   ['2026-05-04', '2026-05-15', 'P001-P017'],
@@ -3495,7 +3481,8 @@ const POST_TEST_PERIODS: [string, string, string][] = [
   ['2026-09-10', '2026-09-23', 'P154-P169'],
 ];
 
-// Valores de las fichas post-test: [numerador, denominador] por periodo
+// Totales del post-test por periodo: [numerador, denominador]. Se reparten entre
+// los participantes al sembrar sus intentos de examen (seedPostTestParticipants)
 // IND-01: respuestas correctas, total de ítems
 const POST_TEST_THEORY: [number, number][] = [
   [2006, 2550],
@@ -3535,126 +3522,6 @@ const POST_TEST_INCIDENTS: [number, number][] = [
   [918, 1020],
   [880, 960],
 ];
-
-const withPeriods = (
-  periods: [string, string, string][],
-  values: [number, number][],
-): IndicatorSeedRow[] =>
-  periods.map(([start, end, group], i) => [start, end, group, ...values[i]]);
-
-const INDICATOR_SHEETS: {
-  code: string;
-  testType: 'PRE_TEST' | 'POST_TEST';
-  rows: IndicatorSeedRow[];
-}[] = [
-  {
-    code: 'IND-01',
-    testType: 'PRE_TEST',
-    rows: withPeriods(PRE_TEST_PERIODS, [
-      [1071, 2550],
-      [1156, 2550],
-      [1105, 2550],
-      [1224, 2550],
-      [1190, 2550],
-      [1173, 2550],
-      [1258, 2550],
-      [1207, 2550],
-      [1173, 2550],
-      [1168, 2400],
-    ]),
-  },
-  {
-    code: 'IND-01',
-    testType: 'POST_TEST',
-    rows: withPeriods(POST_TEST_PERIODS, POST_TEST_THEORY),
-  },
-  {
-    code: 'IND-02',
-    testType: 'PRE_TEST',
-    rows: withPeriods(PRE_TEST_PERIODS, [
-      [19720, 340],
-      [19380, 340],
-      [20400, 340],
-      [18870, 340],
-      [19210, 340],
-      [18360, 340],
-      [19040, 340],
-      [19550, 340],
-      [18530, 340],
-      [18720, 320],
-    ]),
-  },
-  {
-    code: 'IND-02',
-    testType: 'POST_TEST',
-    rows: withPeriods(POST_TEST_PERIODS, POST_TEST_TIME),
-  },
-  {
-    code: 'IND-03',
-    testType: 'PRE_TEST',
-    rows: withPeriods(PRE_TEST_PERIODS, [
-      [272, 1020],
-      [306, 1020],
-      [255, 1020],
-      [340, 1020],
-      [323, 1020],
-      [374, 1020],
-      [340, 1020],
-      [306, 1020],
-      [357, 1020],
-      [304, 960],
-    ]),
-  },
-  {
-    code: 'IND-03',
-    testType: 'POST_TEST',
-    rows: withPeriods(POST_TEST_PERIODS, POST_TEST_INCIDENTS),
-  },
-];
-
-async function seedIndicatorSheets() {
-  for (const sheetSeed of INDICATOR_SHEETS) {
-    const periods =
-      sheetSeed.testType === 'PRE_TEST' ? PRE_TEST_PERIODS : POST_TEST_PERIODS;
-    const sheetData = {
-      company: 'Native Lab S.A.C.',
-      startDate: new Date(periods[0][0]),
-      endDate: new Date(periods[periods.length - 1][1]),
-    };
-    const sheet = await prisma.indicatorSheet.upsert({
-      where: {
-        code_testType: { code: sheetSeed.code, testType: sheetSeed.testType },
-      },
-      create: {
-        code: sheetSeed.code,
-        testType: sheetSeed.testType,
-        ...sheetData,
-      },
-      update: sheetData,
-    });
-
-    for (const [
-      i,
-      [start, end, group, numerator, denominator],
-    ] of sheetSeed.rows.entries()) {
-      const recordData = {
-        startDate: new Date(start),
-        endDate: new Date(end),
-        group,
-        numerator,
-        denominator,
-      };
-      await prisma.indicatorRecord.upsert({
-        where: { sheetId_itemNumber: { sheetId: sheet.id, itemNumber: i + 1 } },
-        create: { sheetId: sheet.id, itemNumber: i + 1, ...recordData },
-        update: recordData,
-      });
-    }
-    console.log(
-      `📊 Ficha ${sheetSeed.code} ${sheetSeed.testType}: ${sheetSeed.rows.length} registros`,
-    );
-  }
-}
 
 // ─── Participantes del post-test (evaluaciones registradas en la app) ─────────
 // El post-test se aplicó con la aplicación: cada participante P001-P169 tiene un
@@ -3976,7 +3843,6 @@ async function main() {
   await seedAchievements();
   await seedCourses();
   await seedSettings();
-  await seedIndicatorSheets();
   await seedPostTestParticipants(rolesMap);
 
   console.log('✨ Seeder completado exitosamente.');

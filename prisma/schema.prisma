@@ -354,38 +354,3 @@ model Notification {
   @@index([createdAt])
   @@map("notifications")
 }
-
-// --- FICHAS DE REGISTRO DE INDICADORES (tesis) ---
-
-model IndicatorSheet {
-  id        String            @id @default(uuid())
-  code      String // IND-01, IND-02, IND-03
-  testType  String // PRE_TEST, POST_TEST
-  company   String            @default("Native Lab S.A.C.")
-  startDate DateTime?
-  endDate   DateTime?
-  records   IndicatorRecord[]
-  createdAt DateTime          @default(now())
-  updatedAt DateTime          @updatedAt
-
-  @@unique([code, testType])
-  @@map("indicator_sheets")
-}
-
-model IndicatorRecord {
-  id          String         @id @default(uuid())
-  sheetId     String
-  sheet       IndicatorSheet @relation(fields: [sheetId], references: [id], onDelete: Cascade)
-  itemNumber  Int
-  startDate   DateTime
-  endDate     DateTime?
-  group       String? // Ej. P001-P017
-  numerator   Float // Respuestas correctas / Tiempo total (min) / Incidencias resueltas
-  denominator Float // Total de ítems / Tareas evaluadas / Incidencias inyectadas
-  notes       String?
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-
-  @@unique([sheetId, itemNumber])
-  @@map("indicator_records")
-}

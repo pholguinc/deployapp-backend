@@ -1,13 +1,6 @@
 // Indicadores de la variable dependiente "Aprendizaje teórico y práctico del
 // despliegue de servicios web en escenarios de producción" (fichas de registro, tesis).
-
-export const TEST_TYPES = ['PRE_TEST', 'POST_TEST'] as const;
-export type TestType = (typeof TEST_TYPES)[number];
-
-export const TEST_TYPE_LABELS: Record<TestType, string> = {
-  PRE_TEST: 'Pre-Test',
-  POST_TEST: 'Post-Test',
-};
+// Se calculan con las evaluaciones rendidas en la app (intentos de examen final).
 
 export const INDICATOR_CODES = ['IND-01', 'IND-02', 'IND-03'] as const;
 export type IndicatorCode = (typeof INDICATOR_CODES)[number];
@@ -92,33 +85,4 @@ export function computeIndicatorValue(
 ): number | null {
   if (!denominator || denominator <= 0) return null;
   return round2((numerator / denominator) * definition.multiplier);
-}
-
-/**
- * Compara pre-test vs post-test. La mejora relativa respeta el sentido del
- * indicador (en IND-02 una reducción de tiempo es una mejora).
- */
-export function compareIndicator(
-  definition: IndicatorDefinition,
-  pre: number | null,
-  post: number | null,
-) {
-  if (pre === null || post === null) {
-    return {
-      pre,
-      post,
-      absoluteChange: null,
-      relativeImprovement: null,
-      improved: null,
-    };
-  }
-  const absoluteChange = round2(post - pre);
-  const gain = definition.betterWhen === 'higher' ? post - pre : pre - post;
-  return {
-    pre,
-    post,
-    absoluteChange,
-    relativeImprovement: pre !== 0 ? round2((gain / pre) * 100) : null,
-    improved: gain > 0,
-  };
 }
