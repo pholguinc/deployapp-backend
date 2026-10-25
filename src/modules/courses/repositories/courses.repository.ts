@@ -16,9 +16,10 @@ export class CoursesRepository {
     return await this.prisma.course.create({ data });
   }
 
-  async findAll(skip?: number, take?: number) {
+  async findAll(skip?: number, take?: number, where?: Prisma.CourseWhereInput) {
     return Promise.all([
       this.prisma.course.findMany({
+        where,
         skip,
         take,
         orderBy: { createdAt: 'desc' },
@@ -34,7 +35,7 @@ export class CoursesRepository {
           },
         },
       }),
-      this.prisma.course.count(),
+      this.prisma.course.count({ where }),
     ]);
   }
 

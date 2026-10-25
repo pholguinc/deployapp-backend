@@ -13,10 +13,12 @@ import {
   SubmitFinalExamResponseDto,
   ExamAttemptResponseDto,
   CertificateResponseDto,
+  GradePracticalExamRequestDto,
 } from '../dtos';
 import { Prisma, type FinalExam } from '@prisma/client';
 import PDFDocument from 'pdfkit';
 import { NotificationsService } from '../../notifications/services/notifications.service';
+import { UploadService } from '../../upload/upload.service';
 
 const PASSING_SCORE = 15; // out of 20
 
@@ -26,6 +28,7 @@ export class ExamsService {
     private readonly examsRepository: ExamsRepository,
     private readonly coursesRepository: CoursesRepository,
     private readonly notificationsService: NotificationsService,
+    private readonly uploadService: UploadService,
   ) {}
 
   // ── CREATE FINAL EXAM (admin/instructor) ───────────────────────────────────
@@ -34,7 +37,6 @@ export class ExamsService {
     courseId: string,
     dto: CreateFinalExamRequestDto,
   ): Promise<FinalExamResponseDto> {
-    // Verify course exists
     const course = await this.coursesRepository.findById(courseId);
     if (!course) {
       throw new NotFoundException(`Course ${courseId} not found`);
@@ -47,6 +49,12 @@ export class ExamsService {
 
     const data: Prisma.FinalExamCreateInput = {
       title: dto.title,
+      practicalTitle: dto.practicalTitle ?? 'Caso Práctico de Despliegue de Servicios',
+      practicalInstructions: dto.practicalInstructions ?? null,
+      practicalRubric: dto.practicalRubric ?? null,
+      practicalGuideUrl: dto.practicalGuideUrl ?? null,
+      practicalPdfUrl: dto.practicalPdfUrl ?? dto.practicalGuideUrl ?? null,
+      practicalPdfName: dto.practicalPdfName ?? null,
       course: { connect: { id: courseId } },
       ...(dto.questions &&
         dto.questions.length > 0 && {
@@ -83,6 +91,12 @@ export class ExamsService {
 
     const data: Prisma.FinalExamCreateInput = {
       title: dto.title,
+      practicalTitle: dto.practicalTitle ?? 'Caso Práctico de Despliegue de Servicios',
+      practicalInstructions: dto.practicalInstructions ?? null,
+      practicalRubric: dto.practicalRubric ?? null,
+      practicalGuideUrl: dto.practicalGuideUrl ?? null,
+      practicalPdfUrl: dto.practicalPdfUrl ?? dto.practicalGuideUrl ?? null,
+      practicalPdfName: dto.practicalPdfName ?? null,
       course: { connect: { id: courseId } },
       ...(dto.questions &&
         dto.questions.length > 0 && {
@@ -132,7 +146,7 @@ export class ExamsService {
     };
   }
 
-  // ── SUBMIT EXAM ─────────────────────────────────────────────────────────────
+  // ── SUBMIT THEORETICAL EXAM ─────────────────────────────────────────────────
 
   async submitExam(
     userId: string,
@@ -176,7 +190,7 @@ export class ExamsService {
       throw new BadRequestException('The exam has no questions.');
     }
 
-    // Score the answers
+    // Score the theoretical answers
     let correctCount = 0;
     for (const answer of dto.answers) {
       const option = await this.examsRepository.findOptionById(
@@ -191,26 +205,69 @@ export class ExamsService {
       }
     }
 
-    // Scale score to 20 points
-    const score = parseFloat(((correctCount / totalQuestions) * 20).toFixed(2));
-    const passed = score >= PASSING_SCORE;
+    // Scale theoretical score to 20 points
+    const theoreticalScore = parseFloat(
+      ((correctCount / totalQuestions) * 20).toFixed(2),
+    );
+    const theoreticalPassed = theoreticalScore >= PASSING_SCORE;
 
-    // Persist attempt
-    const attempt = await this.examsRepository.saveAttempt({
-      user: { connect: { id: userId } },
-      exam: { connect: { id: exam.id } },
-      score,
-      total: totalQuestions,
-      passed,
-    });
+    // Check if an attempt already exists (e.g. practical PDF already uploaded)
+    const existingAttempt = await this.examsRepository.getLastAttempt(
+      userId,
+      exam.id,
+    );
 
-    // Issue certificate if passed
+    let finalScore = theoreticalScore;
+    let passed = false;
     let certificate: CertificateResponseDto | null = null;
+
+    // Si ya tiene examen práctico calificado, promediar los 2:
+    if (
+      existingAttempt &&
+      existingAttempt.practicalStatus === 'GRADED' &&
+      existingAttempt.practicalScore !== null
+    ) {
+      finalScore = parseFloat(
+        ((theoreticalScore + existingAttempt.practicalScore) / 2).toFixed(2),
+      );
+      passed = finalScore >= PASSING_SCORE;
+    } else {
+      // Falta revisión o subida del práctico: no se aprueba automáticamente aún
+      passed = false;
+    }
+
+    let attempt: any;
+    if (existingAttempt) {
+      attempt = await this.examsRepository.updateAttempt(existingAttempt.id, {
+        score: finalScore,
+        total: totalQuestions,
+        passed,
+        theoreticalScore,
+        theoreticalCorrect: correctCount,
+        theoreticalTotal: totalQuestions,
+        theoreticalPassed,
+      });
+    } else {
+      attempt = await this.examsRepository.saveAttempt({
+        user: { connect: { id: userId } },
+        exam: { connect: { id: exam.id } },
+        score: finalScore,
+        total: totalQuestions,
+        passed,
+        theoreticalScore,
+        theoreticalCorrect: correctCount,
+        theoreticalTotal: totalQuestions,
+        theoreticalPassed,
+        practicalStatus: 'NOT_SUBMITTED',
+      });
+    }
+
+    // Solo se emite certificado si ambos componentes están aprobados y el promedio >= PASSING_SCORE
     if (passed) {
       const createdCert = await this.examsRepository.upsertCertificate(
         userId,
         courseId,
-        score,
+        finalScore,
       );
       certificate = createdCert;
 
@@ -218,22 +275,249 @@ export class ExamsService {
         await this.notificationsService.createCourseCompletedNotification({
           userId,
           courseId,
-          score,
+          score: finalScore,
           certificateId: createdCert.id,
           completedAt: new Date().toISOString(),
         });
       } catch (notifErr) {
-        console.error('Error al generar notificación de curso completado:', notifErr);
+        console.error(
+          'Error al generar notificación de curso completado:',
+          notifErr,
+        );
       }
     }
 
     return {
-      score,
+      score: finalScore,
       total: totalQuestions,
       correct: correctCount,
       passed,
       attempt,
       certificate,
+    };
+  }
+
+  // ── SUBMIT PRACTICAL EXAM (Student PDF upload) ───────────────────────────────
+
+  async submitPracticalExam(
+    userId: string,
+    courseId: string,
+    file: Express.Multer.File,
+  ) {
+    if (!file) {
+      throw new BadRequestException(
+        'Debes adjuntar un archivo PDF con tu informe o evidencia técnica.',
+      );
+    }
+
+    const isPdf =
+      file.mimetype === 'application/pdf' ||
+      file.originalname.toLowerCase().endsWith('.pdf');
+    if (!isPdf) {
+      throw new BadRequestException(
+        'El archivo de entrega práctica debe ser un PDF válido.',
+      );
+    }
+
+    const progress = await this.coursesRepository.getUserCourseProgress(
+      userId,
+      courseId,
+    );
+    if (!progress) {
+      throw new BadRequestException('No estás inscrito en este curso.');
+    }
+
+    const exam = await this.examsRepository.findExamByCourse(courseId);
+    if (!exam) {
+      throw new NotFoundException(
+        `No se encontró el examen final para el curso ${courseId}`,
+      );
+    }
+
+    // Subir archivo al bucket S3 o storage
+    const fileUrl = await this.uploadService.uploadFile(
+      file,
+      'practical-exams',
+    );
+
+    const existingAttempt = await this.examsRepository.getLastAttempt(
+      userId,
+      exam.id,
+    );
+
+    if (existingAttempt) {
+      return this.examsRepository.updateAttempt(existingAttempt.id, {
+        practicalFileUrl: fileUrl,
+        practicalFileName: file.originalname,
+        practicalSubmittedAt: new Date(),
+        practicalStatus: 'PENDING_REVIEW',
+      });
+    } else {
+      return this.examsRepository.saveAttempt({
+        user: { connect: { id: userId } },
+        exam: { connect: { id: exam.id } },
+        score: 0,
+        total: exam.questions?.length ?? 0,
+        passed: false,
+        practicalFileUrl: fileUrl,
+        practicalFileName: file.originalname,
+        practicalSubmittedAt: new Date(),
+        practicalStatus: 'PENDING_REVIEW',
+      });
+    }
+  }
+
+  // ── GET PRACTICAL SUBMISSIONS (Admin / Instructor) ──────────────────────────
+
+  async getPracticalSubmissions(courseId: string) {
+    const exam = await this.examsRepository.findExamByCourse(courseId);
+    if (!exam) {
+      throw new NotFoundException(`No final exam found for course ${courseId}`);
+    }
+    const attempts = await this.examsRepository.findAttemptsByCourse(courseId);
+    return attempts.map((a) => {
+      const isGraded = a.practicalStatus === 'GRADED';
+      const theoreticalScore = a.theoreticalScore ?? a.score ?? 0;
+      const practicalScore = a.practicalScore;
+      const finalScore = isGraded && practicalScore !== null && practicalScore !== undefined
+        ? parseFloat(((theoreticalScore + practicalScore) / 2).toFixed(2))
+        : null;
+      const passed = isGraded && finalScore !== null && finalScore >= PASSING_SCORE;
+
+      return {
+        ...a,
+        theoreticalScore,
+        practicalScore,
+        score: finalScore ?? theoreticalScore,
+        passed,
+      };
+    });
+  }
+
+  // ── UPLOAD PRACTICAL GUIDE PDF (Admin / Instructor) ─────────────────────────
+
+  async uploadPracticalGuide(courseId: string, file: Express.Multer.File) {
+    if (!file) {
+      throw new BadRequestException('Debes proporcionar un archivo PDF.');
+    }
+    const fileUrl = await this.uploadService.uploadFile(file, 'course-practical-exams');
+    const exam = await this.examsRepository.findExamByCourse(courseId);
+    if (exam) {
+      await this.examsRepository.updateExam(exam.id, {
+        practicalGuideUrl: fileUrl,
+        practicalPdfUrl: fileUrl,
+        practicalPdfName: file.originalname,
+      });
+    }
+    return { url: fileUrl, fileName: file.originalname };
+  }
+
+  // ── UPLOAD STUDENT PRACTICAL FILE (Admin / Docente manual upload) ───────────
+
+  async uploadStudentPracticalFile(
+    courseId: string,
+    attemptId: string,
+    file: Express.Multer.File,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Debes proporcionar un archivo PDF.');
+    }
+    const attempt = await this.examsRepository.findAttemptById(attemptId);
+    if (!attempt || attempt.exam.courseId !== courseId) {
+      throw new NotFoundException(`Intento #${attemptId} no encontrado para este curso`);
+    }
+
+    const fileUrl = await this.uploadService.uploadFile(file, 'practical-exams');
+    return this.examsRepository.updateAttempt(attemptId, {
+      practicalFileUrl: fileUrl,
+      practicalFileName: file.originalname,
+      practicalSubmittedAt: new Date(),
+      practicalStatus: 'PENDING_REVIEW',
+    });
+  }
+
+  // ── GRADE PRACTICAL EXAM (Admin / Instructor) ───────────────────────────────
+
+  async gradePracticalExam(
+    courseId: string,
+    attemptId: string,
+    graderId: string,
+    dto: GradePracticalExamRequestDto,
+  ) {
+    const attempt = await this.examsRepository.findAttemptById(attemptId);
+    if (!attempt || attempt.exam.courseId !== courseId) {
+      throw new NotFoundException(
+        `Intento de examen #${attemptId} no encontrado para este curso.`,
+      );
+    }
+
+    const practicalScore = parseFloat(Number(dto.practicalScore).toFixed(2));
+    const theoreticalScore = attempt.theoreticalScore ?? attempt.score ?? 0;
+
+    // Promedio de ambos componentes juntos: (teórico + práctico) / 2
+    const finalScore = parseFloat(
+      ((theoreticalScore + practicalScore) / 2).toFixed(2),
+    );
+    const passed = finalScore >= PASSING_SCORE;
+
+    if (
+      dto.incidentsInjected !== undefined &&
+      dto.incidentsResolved !== undefined &&
+      dto.incidentsResolved > dto.incidentsInjected
+    ) {
+      throw new BadRequestException(
+        'Las incidencias resueltas no pueden superar a las incidencias inyectadas.',
+      );
+    }
+
+    const updated = await this.examsRepository.updateAttempt(attemptId, {
+      practicalScore,
+      practicalTasksEvaluated: dto.practicalTasksEvaluated,
+      practicalTotalMinutes: dto.practicalTotalMinutes,
+      incidentsInjected: dto.incidentsInjected,
+      incidentsResolved: dto.incidentsResolved,
+      practicalFeedback: dto.feedback ?? null,
+      practicalGradedAt: new Date(),
+      practicalStatus: 'GRADED',
+      gradedBy: { connect: { id: graderId } },
+      score: finalScore,
+      passed,
+    });
+
+    let certificate: CertificateResponseDto | null = null;
+    if (passed) {
+      // Recién se emite el certificado tras aprobar en promedio teórico + práctico
+      certificate = await this.examsRepository.upsertCertificate(
+        attempt.userId,
+        courseId,
+        finalScore,
+      );
+
+      try {
+        await this.notificationsService.createCourseCompletedNotification({
+          userId: attempt.userId,
+          courseId,
+          score: finalScore,
+          certificateId: certificate.id,
+          completedAt: new Date().toISOString(),
+        });
+      } catch (notifErr) {
+        console.error(
+          'Error al generar notificación de certificado:',
+          notifErr,
+        );
+      }
+    }
+
+    return {
+      success: true,
+      attempt: updated,
+      finalScore,
+      passed,
+      certificate,
+      message: passed
+        ? `Examen práctico calificado con ${practicalScore}/20. Promedio final: ${finalScore}/20. ¡Certificado emitido exitosamente!`
+        : `Examen práctico calificado con ${practicalScore}/20. Promedio final: ${finalScore}/20. No alcanza el puntaje mínimo de ${PASSING_SCORE}/20.`,
     };
   }
 
@@ -265,7 +549,7 @@ export class ExamsService {
     const cert = await this.examsRepository.findCertificate(userId, courseId);
     if (!cert) {
       throw new NotFoundException(
-        'No certificate found. Pass the final exam with a score ≥ 15/20.',
+        `No certificate found. Both theoretical and practical exams must be approved with an average score ≥ ${PASSING_SCORE}/20.`,
       );
     }
     return cert;
@@ -291,7 +575,7 @@ export class ExamsService {
     const cert = await this.examsRepository.findCertificate(userId, courseId);
     if (!cert) {
       throw new NotFoundException(
-        'No certificate found. Pass the final exam with a score ≥ 15/20.',
+        `No certificate found. Pass the final exam with an average score ≥ ${PASSING_SCORE}/20.`,
       );
     }
 
@@ -420,7 +704,7 @@ export class ExamsService {
       .font('Helvetica')
       .fontSize(11)
       .fillColor('#94a3b8')
-      .text('Puntuación obtenida', 0, badgeY + 58, { align: 'center' });
+      .text('Promedio Final Obtenido', 0, badgeY + 58, { align: 'center' });
 
     // ── Footer ─────────────────────────────────────────────────────────────────
     doc

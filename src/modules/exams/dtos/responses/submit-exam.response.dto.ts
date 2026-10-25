@@ -11,17 +11,53 @@ export class FinalExamAttemptResponseDto {
   @ApiProperty({ example: 'ex1b2c3d4-e5f6-7890-abcd-ef1234567890' })
   examId: string;
 
-  @ApiProperty({ example: 18.0, description: 'Nota calculada sobre 20' })
+  @ApiProperty({ example: 18.0, description: 'Nota consolidada sobre 20 (promedio teórico + práctico)' })
   score: number;
 
-  @ApiProperty({ example: 10, description: 'Total de preguntas del examen' })
+  @ApiProperty({ example: 10, description: 'Total de preguntas del examen teórico' })
   total: number;
 
-  @ApiProperty({ example: true, description: 'True si la nota es >= 15' })
+  @ApiProperty({ example: true, description: 'True si el promedio final es aprobatorio' })
   passed: boolean;
+
+  @ApiPropertyOptional({ example: 18.0 })
+  theoreticalScore?: number | null;
+
+  @ApiPropertyOptional({ example: 10 })
+  theoreticalTotal?: number | null;
+
+  @ApiPropertyOptional({ example: 9 })
+  theoreticalCorrect?: number | null;
+
+  @ApiPropertyOptional({ example: true })
+  theoreticalPassed?: boolean;
+
+  @ApiPropertyOptional({ example: 'https://storage.../practical.pdf' })
+  practicalFileUrl?: string | null;
+
+  @ApiPropertyOptional({ example: 'informe_despliegue.pdf' })
+  practicalFileName?: string | null;
+
+  @ApiPropertyOptional()
+  practicalSubmittedAt?: Date | null;
+
+  @ApiPropertyOptional({ example: 'PENDING_REVIEW' })
+  practicalStatus?: string;
+
+  @ApiPropertyOptional({ example: 16.0 })
+  practicalScore?: number | null;
+
+  @ApiPropertyOptional({ example: 'Buen trabajo' })
+  practicalFeedback?: string | null;
+
+  @ApiPropertyOptional()
+  practicalGradedAt?: Date | null;
 
   @ApiProperty()
   createdAt: Date;
+
+  @ApiPropertyOptional()
+  updatedAt?: Date;
 }
 
 export class SubmitFinalExamResponseDto {

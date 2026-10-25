@@ -7,12 +7,25 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
-import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { JwtAuthGuard } from 'src/modules/auth/guards/jwt-auth.guard';
+import { RolesGuard } from 'src/modules/auth/guards/roles.guard';
+import { Roles } from 'src/modules/auth/decorators/roles.decorator';
 import { NotificationsService } from '../services/notifications.service';
 import { CreateNotificationDto } from '../dtos/create-notification.dto';
 
 @ApiTags('Notifications')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('SUPERADMIN', 'ADMIN', 'DOCENTE')
 @Controller('notifications')
 export class NotificationsController {
   constructor(private readonly notificationsService: NotificationsService) {}
@@ -42,12 +55,14 @@ export class NotificationsController {
   }
 
   @Post()
+  @Roles('SUPERADMIN', 'ADMIN')
   @ApiOperation({ summary: 'Crear una notificación manualmente' })
   create(@Body() dto: CreateNotificationDto) {
     return this.notificationsService.create(dto);
   }
 
   @Post('test')
+  @Roles('SUPERADMIN', 'ADMIN')
   @ApiOperation({
     summary: 'Crear una notificación de prueba de curso finalizado',
   })
@@ -76,6 +91,7 @@ export class NotificationsController {
   }
 
   @Delete(':id')
+  @Roles('SUPERADMIN', 'ADMIN')
   @ApiOperation({ summary: 'Eliminar una notificación' })
   delete(@Param('id') id: string) {
     return this.notificationsService.delete(id);

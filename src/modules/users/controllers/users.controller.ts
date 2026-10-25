@@ -8,8 +8,18 @@ import {
   Query,
   ParseIntPipe,
   DefaultValuePipe,
+  UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiQuery,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
+import { JwtAuthGuard } from 'src/modules/auth/guards/jwt-auth.guard';
+import { RolesGuard } from 'src/modules/auth/guards/roles.guard';
+import { Roles } from 'src/modules/auth/decorators/roles.decorator';
 import { UsersService } from '../services/users.service';
 import { CreateUserRequestDto } from '../dtos/requests/create-user.request.dto';
 import { UpdateUserRequestDto } from '../dtos/requests/update-user.request.dto';
@@ -18,6 +28,9 @@ import { UserResponseDto } from '../dtos/responses/user.response.dto';
 import { PaginatedUsersResponseDto } from '../dtos/responses/paginated-users.response.dto';
 
 @ApiTags('Users')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('SUPERADMIN', 'ADMIN')
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}

@@ -41,15 +41,57 @@ export class ExamsRepository {
     return this.prisma.finalExam.delete({ where: { id } });
   }
 
+  async updateExam(id: string, data: Prisma.FinalExamUpdateInput): Promise<FinalExam> {
+    return this.prisma.finalExam.update({ where: { id }, data });
+  }
+
   // ── EXAM SUBMISSION ─────────────────────────────────────────────────────────
 
   async saveAttempt(data: Prisma.FinalExamAttemptCreateInput) {
     return this.prisma.finalExamAttempt.create({ data });
   }
 
+  async updateAttempt(id: string, data: Prisma.FinalExamAttemptUpdateInput) {
+    return this.prisma.finalExamAttempt.update({
+      where: { id },
+      data,
+      include: {
+        user: { select: { id: true, name: true, lastname: true, email: true } },
+        gradedBy: { select: { id: true, name: true, lastname: true, email: true } },
+      },
+    });
+  }
+
+  async findAttemptById(id: string) {
+    return this.prisma.finalExamAttempt.findUnique({
+      where: { id },
+      include: {
+        user: { select: { id: true, name: true, lastname: true, email: true } },
+        exam: { select: { id: true, courseId: true, title: true } },
+        gradedBy: { select: { id: true, name: true, lastname: true, email: true } },
+      },
+    });
+  }
+
   async getLastAttempt(userId: string, examId: string) {
     return this.prisma.finalExamAttempt.findFirst({
       where: { userId, examId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        gradedBy: { select: { id: true, name: true, lastname: true, email: true } },
+      },
+    });
+  }
+
+  async findAttemptsByCourse(courseId: string) {
+    return this.prisma.finalExamAttempt.findMany({
+      where: {
+        exam: { courseId },
+      },
+      include: {
+        user: { select: { id: true, name: true, lastname: true, email: true } },
+        gradedBy: { select: { id: true, name: true, lastname: true, email: true } },
+      },
       orderBy: { createdAt: 'desc' },
     });
   }

@@ -15,6 +15,7 @@ export class ReportsService {
       totalCertificates,
       totalAttempts,
       passedAttempts,
+      pendingPracticalReviews,
     ] = await Promise.all([
       this.prisma.user.count(),
       this.prisma.user.count({ where: { isActive: true } }),
@@ -24,6 +25,9 @@ export class ReportsService {
       this.prisma.certificate.count(),
       this.prisma.finalExamAttempt.count(),
       this.prisma.finalExamAttempt.count({ where: { passed: true } }),
+      this.prisma.finalExamAttempt.count({
+        where: { practicalStatus: 'PENDING_REVIEW' },
+      }),
     ]);
 
     const completionRate =
@@ -47,6 +51,7 @@ export class ReportsService {
       totalAttempts,
       passedAttempts,
       passRate,
+      pendingPracticalReviews,
     };
   }
 
@@ -124,7 +129,16 @@ export class ReportsService {
           select: { id: true, title: true },
         },
         attempts: {
-          select: { score: true, total: true, passed: true, createdAt: true },
+          select: {
+            score: true,
+            total: true,
+            passed: true,
+            createdAt: true,
+            theoreticalCorrect: true,
+            theoreticalTotal: true,
+            practicalScore: true,
+            practicalStatus: true,
+          },
         },
       },
     });
@@ -148,6 +162,38 @@ export class ReportsService {
             )
           : 0;
 
+      // Porcentaje de respuestas correctas (misma fórmula que IND-01)
+      const theoretical = e.attempts.reduce(
+        (acc, a) =>
+          a.theoreticalTotal
+            ? {
+                correct: acc.correct + (a.theoreticalCorrect ?? 0),
+                total: acc.total + a.theoreticalTotal,
+              }
+            : acc,
+        { correct: 0, total: 0 },
+      );
+      const theoreticalCorrectRate =
+        theoretical.total > 0
+          ? Number(((theoretical.correct / theoretical.total) * 100).toFixed(2))
+          : null;
+
+      const graded = e.attempts.filter(
+        (a) => a.practicalStatus === 'GRADED' && a.practicalScore !== null,
+      );
+      const avgPracticalScore =
+        graded.length > 0
+          ? Number(
+              (
+                graded.reduce((acc, a) => acc + (a.practicalScore ?? 0), 0) /
+                graded.length
+              ).toFixed(1),
+            )
+          : null;
+      const pendingReviews = e.attempts.filter(
+        (a) => a.practicalStatus === 'PENDING_REVIEW',
+      ).length;
+
       return {
         id: e.id,
         title: e.title,
@@ -158,6 +204,10 @@ export class ReportsService {
         failedAttempts,
         passRate,
         avgScore,
+        theoreticalCorrectRate,
+        avgPracticalScore,
+        gradedPracticals: graded.length,
+        pendingReviews,
       };
     });
   }
@@ -205,7 +255,6 @@ export class ReportsService {
         },
       },
       orderBy: { updatedAt: 'desc' },
-      take: 100,
     });
 
     return userCourses.map((uc) => {
@@ -226,5 +275,55 @@ export class ReportsService {
         updatedAt: uc.updatedAt,
       };
     });
+  }
+
+  async getMySummary(userId: string) {
+    const [enrollments, completedLessons, certificates, attempts] =
+      await Promise.all([
+        this.prisma.userCourse.findMany({
+          where: { userId },
+          select: { status: true, progress: true },
+        }),
+        this.prisma.userLesson.count({ where: { userId, completed: true } }),
+        this.prisma.certificate.count({ where: { userId } }),
+        this.prisma.finalExamAttempt.findMany({
+          where: { userId },
+          select: { score: true, passed: true, practicalStatus: true },
+        }),
+      ]);
+
+    const enrolledCourses = enrollments.length;
+    const completedCourses = enrollments.filter(
+      (e) => e.status === 'COMPLETED',
+    ).length;
+    const avgProgress =
+      enrolledCourses > 0
+        ? Math.round(
+            enrollments.reduce((acc, e) => acc + (e.progress || 0), 0) /
+              enrolledCourses,
+          )
+        : 0;
+    const avgExamScore =
+      attempts.length > 0
+        ? Number(
+            (
+              attempts.reduce((acc, a) => acc + a.score, 0) / attempts.length
+            ).toFixed(1),
+          )
+        : null;
+
+    return {
+      enrolledCourses,
+      completedCourses,
+      avgProgress,
+      completedLessons,
+      certificates,
+      examAttempts: attempts.length,
+      passedExams: attempts.filter((a) => a.passed).length,
+      pendingPracticalReviews: attempts.filter(
+        (a) => a.practicalStatus === 'PENDING_REVIEW',
+      ).length,
+      avgExamScore,
+    };
   }
 }

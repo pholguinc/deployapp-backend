@@ -10,26 +10,27 @@ datasource db {
 }
 
 model User {
-  id               String              @id @default(uuid())
-  email            String              @unique
-  password         String
-  name             String?
-  lastname         String?
-  phone            String?
-  isActive         Boolean             @default(true)
-  roleId           String?
-  role             Role?               @relation(fields: [roleId], references: [id], onDelete: SetNull)
-  sessions         Session[]
-  comments         Comment[]
-  courses          UserCourse[]
-  lessons          UserLesson[]
-  taughtCourses    Course[]            @relation("CourseInstructor")
-  courseReviews    CourseReview[]
-  examAttempts     FinalExamAttempt[]
-  certificates     Certificate[]
-  notifications    Notification[]
-  createdAt        DateTime            @default(now())
-  updatedAt        DateTime            @updatedAt
+  id             String             @id @default(uuid())
+  email          String             @unique
+  password       String
+  name           String?
+  lastname       String?
+  phone          String?
+  isActive       Boolean            @default(true)
+  roleId         String?
+  role           Role?              @relation(fields: [roleId], references: [id], onDelete: SetNull)
+  sessions       Session[]
+  comments       Comment[]
+  courses        UserCourse[]
+  lessons        UserLesson[]
+  taughtCourses  Course[]           @relation("CourseInstructor")
+  courseReviews  CourseReview[]
+  examAttempts   FinalExamAttempt[] @relation("UserAttempts")
+  gradedAttempts FinalExamAttempt[] @relation("GradedAttempts")
+  certificates   Certificate[]
+  notifications  Notification[]
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
 
   @@map("users")
 }
@@ -93,10 +94,10 @@ model Course {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  modules    Module[]
-  users      UserCourse[]
-  reviews    CourseReview[]
-  finalExam  FinalExam?
+  modules      Module[]
+  users        UserCourse[]
+  reviews      CourseReview[]
+  finalExam    FinalExam?
   certificates Certificate[]
 
   @@map("courses")
@@ -143,17 +144,17 @@ model Module {
 }
 
 model Lesson {
-  id        String     @id @default(uuid())
-  title     String
-  duration  String? // e.g. "08:35 min"
-  videoUrl  String?
-  type      String     @default("VIDEO") // VIDEO, QUIZ, TEXT
-  order     Int        @default(0)
-  moduleId  String
-  module    Module     @relation(fields: [moduleId], references: [id], onDelete: Cascade)
-  resources Resource[]
-  comments  Comment[]
-  quizzes   Quiz[]
+  id          String       @id @default(uuid())
+  title       String
+  duration    String? // e.g. "08:35 min"
+  videoUrl    String?
+  type        String       @default("VIDEO") // VIDEO, QUIZ, TEXT
+  order       Int          @default(0)
+  moduleId    String
+  module      Module       @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  resources   Resource[]
+  comments    Comment[]
+  quizzes     Quiz[]
   userLessons UserLesson[]
 
   @@map("lessons")
@@ -233,24 +234,30 @@ model CourseReview {
 // --- FINAL EXAM ---
 
 model FinalExam {
-  id        String              @id @default(uuid())
-  courseId  String              @unique
-  course    Course              @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  title     String
-  questions FinalExamQuestion[]
-  attempts  FinalExamAttempt[]
-  createdAt DateTime            @default(now())
-  updatedAt DateTime            @updatedAt
+  id                    String              @id @default(uuid())
+  courseId              String              @unique
+  course                Course              @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title                 String
+  practicalTitle        String?             @default("Caso Práctico de Despliegue de Servicios")
+  practicalInstructions String?             @db.Text
+  practicalRubric       String?             @db.Text
+  practicalGuideUrl     String?
+  practicalPdfUrl       String?
+  practicalPdfName      String?
+  questions             FinalExamQuestion[]
+  attempts              FinalExamAttempt[]
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
 
   @@map("final_exams")
 }
 
 model FinalExamQuestion {
-  id       String            @id @default(uuid())
-  text     String
-  examId   String
-  exam     FinalExam         @relation(fields: [examId], references: [id], onDelete: Cascade)
-  options  FinalExamOption[]
+  id      String            @id @default(uuid())
+  text    String
+  examId  String
+  exam    FinalExam         @relation(fields: [examId], references: [id], onDelete: Cascade)
+  options FinalExamOption[]
 
   @@map("final_exam_questions")
 }
@@ -266,26 +273,51 @@ model FinalExamOption {
 }
 
 model FinalExamAttempt {
-  id        String    @id @default(uuid())
-  userId    String
-  examId    String
-  score     Float     // e.g. 18.5 out of 20
-  total     Int       // total questions
-  passed    Boolean   @default(false)
-  createdAt DateTime  @default(now())
+  id     String  @id @default(uuid())
+  userId String
+  examId String
+  score  Float // Puntuación promedio consolidada entre teórico y práctico
+  total  Int // total preguntas teóricas
+  passed Boolean @default(false)
 
-  user User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  exam FinalExam  @relation(fields: [examId], references: [id], onDelete: Cascade)
+  // Componente Teórico
+  theoreticalScore   Float? // Nota teórico (0-20)
+  theoreticalTotal   Int? // Total de preguntas teóricas
+  theoreticalCorrect Int? // Respuestas correctas
+  theoreticalPassed  Boolean @default(false)
+
+  // Componente Práctico (PDF subido y calificado)
+  practicalFileUrl     String? // URL del PDF del examen práctico
+  practicalFileName    String? // Nombre del archivo PDF
+  practicalSubmittedAt DateTime? // Fecha de envío del PDF
+  practicalStatus      String    @default("NOT_SUBMITTED") // NOT_SUBMITTED, PENDING_REVIEW, GRADED, REJECTED
+  practicalScore       Float? // Nota práctico otorgada por el docente (0-20)
+  practicalFeedback    String?   @db.Text
+  practicalGradedAt    DateTime? // Fecha de calificación del docente
+  gradedById           String?
+
+  // Métricas de desempeño práctico registradas por el docente (fichas IND-02 e IND-03)
+  practicalTasksEvaluated Int? // Tareas de despliegue evaluadas (n)
+  practicalTotalMinutes   Float? // Tiempo total acumulado en resolver y desplegar (min)
+  incidentsInjected       Int? // Incidencias inyectadas en el entorno de prueba
+  incidentsResolved       Int? // Incidencias resueltas operativamente
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  user     User      @relation("UserAttempts", fields: [userId], references: [id], onDelete: Cascade)
+  exam     FinalExam @relation(fields: [examId], references: [id], onDelete: Cascade)
+  gradedBy User?     @relation("GradedAttempts", fields: [gradedById], references: [id], onDelete: SetNull)
 
   @@map("final_exam_attempts")
 }
 
 model Certificate {
-  id        String   @id @default(uuid())
-  userId    String
-  courseId  String
-  score     Float
-  issuedAt  DateTime @default(now())
+  id       String   @id @default(uuid())
+  userId   String
+  courseId String
+  score    Float
+  issuedAt DateTime @default(now())
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
@@ -321,4 +353,39 @@ model Notification {
   @@index([read])
   @@index([createdAt])
   @@map("notifications")
+}
+
+// --- FICHAS DE REGISTRO DE INDICADORES (tesis) ---
+
+model IndicatorSheet {
+  id        String            @id @default(uuid())
+  code      String // IND-01, IND-02, IND-03
+  testType  String // PRE_TEST, POST_TEST
+  company   String            @default("Native Lab S.A.C.")
+  startDate DateTime?
+  endDate   DateTime?
+  records   IndicatorRecord[]
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  @@unique([code, testType])
+  @@map("indicator_sheets")
+}
+
+model IndicatorRecord {
+  id          String         @id @default(uuid())
+  sheetId     String
+  sheet       IndicatorSheet @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  itemNumber  Int
+  startDate   DateTime
+  endDate     DateTime?
+  group       String? // Ej. P001-P017
+  numerator   Float // Respuestas correctas / Tiempo total (min) / Incidencias resueltas
+  denominator Float // Total de ítems / Tareas evaluadas / Incidencias inyectadas
+  notes       String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@unique([sheetId, itemNumber])
+  @@map("indicator_records")
 }

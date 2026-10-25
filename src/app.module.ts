@@ -14,6 +14,7 @@ import { ReportsModule } from './modules/reports/reports.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
+import { IndicatorsModule } from './modules/indicators/indicators.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { WebhooksModule } from './modules/webhooks/webhooks.module';
     SettingsModule,
     NotificationsModule,
     WebhooksModule,
+    IndicatorsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

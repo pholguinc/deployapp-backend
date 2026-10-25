@@ -32,6 +32,24 @@ export class FinalExamResponseDto {
   @ApiProperty({ example: 'Examen Final de Certificación' })
   title: string;
 
+  @ApiPropertyOptional({ example: 'Caso Práctico de Despliegue de Servicios Web' })
+  practicalTitle?: string | null;
+
+  @ApiPropertyOptional({ example: 'Realiza el despliegue en AWS...' })
+  practicalInstructions?: string | null;
+
+  @ApiPropertyOptional({ example: 'Rúbrica de evaluación...' })
+  practicalRubric?: string | null;
+
+  @ApiPropertyOptional({ example: 'https://.../guia.pdf' })
+  practicalGuideUrl?: string | null;
+
+  @ApiPropertyOptional({ example: 'https://.../caso-practico-despliegue.pdf' })
+  practicalPdfUrl?: string | null;
+
+  @ApiPropertyOptional({ example: 'Caso_Practico_Docker_Nginx.pdf' })
+  practicalPdfName?: string | null;
+
   @ApiProperty({ type: [FinalExamQuestionResponseDto] })
   questions: FinalExamQuestionResponseDto[];
 

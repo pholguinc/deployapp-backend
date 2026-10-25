@@ -54,12 +54,18 @@ export class CoursesController {
 
   @Get('list')
   @Public()
-  @ApiOperation({ summary: 'List courses with pagination' })
+  @ApiOperation({
+    summary: 'List courses with pagination and role-based filtering',
+  })
   findAll(
+    @Request() req: any,
     @Query('page') page: string = '1',
     @Query('limit') limit: string = '10',
+    @Query('scope') scope?: string,
+    @Query('search') search?: string,
   ) {
-    return this.coursesService.findAll(+page, +limit);
+    const user = req?.user || null;
+    return this.coursesService.findAll(+page, +limit, user, scope, search);
   }
 
   @Get(':id')

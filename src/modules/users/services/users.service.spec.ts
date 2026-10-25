@@ -45,6 +45,8 @@ describe('UsersService', () => {
         service.create({
           email: 'test@example.com',
           password: 'password123',
+          name: 'Docente Test',
+          lastname: 'Apellido Test',
           roleId: 'role-uuid-1',
         }),
       ).rejects.toThrow(ConflictException);
@@ -78,8 +80,8 @@ describe('UsersService', () => {
 
       expect(result.id).toBe('user-1');
       expect(result.role?.name).toBe('DOCENTE');
-      expect((result as Record<string, unknown>).password).toBeUndefined();
-      expect((result as Record<string, unknown>).roleId).toBeUndefined();
+      expect((result as unknown as Record<string, unknown>).password).toBeUndefined();
+      expect((result as unknown as Record<string, unknown>).roleId).toBeUndefined();
       expect(repository.create).toHaveBeenCalled();
     });
   });

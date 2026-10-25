@@ -38,11 +38,54 @@ export class CoursesService {
     return await this.coursesRepository.create(data);
   }
 
-  async findAll(page: number = 1, limit: number = 10) {
+  async findAll(
+    page: number = 1,
+    limit: number = 10,
+    user?: { id: string; role?: string } | null,
+    scope?: string,
+    search?: string,
+  ) {
     const skip = (page - 1) * limit;
+
+    let where: Prisma.CourseWhereInput | undefined;
+
+    if (user && user.role) {
+      const role = user.role.toUpperCase();
+      if (role === 'SUPERADMIN' || role === 'ADMIN') {
+        // SUPERADMIN / ADMIN visualiza todos los cursos de la plataforma
+        where = undefined;
+      } else if (role === 'DOCENTE') {
+        // DOCENTE solo lista los cursos donde está asignado como instructor
+        where = { instructorId: user.id };
+      } else if (role === 'USER') {
+        // USER (estudiante): cursos asignados / inscritos por defecto
+        if (scope === 'catalog' || scope === 'all') {
+          where = { isActive: true };
+        } else {
+          where = { users: { some: { userId: user.id } } };
+        }
+      }
+    } else {
+      // Público no autenticado: catálogo activo
+      where = { isActive: true };
+    }
+
+    if (search && search.trim()) {
+      const query = search.trim();
+      const searchWhere: Prisma.CourseWhereInput = {
+        OR: [
+          { title: { contains: query, mode: 'insensitive' } },
+          { description: { contains: query, mode: 'insensitive' } },
+          { category: { contains: query, mode: 'insensitive' } },
+        ],
+      };
+      where = where ? { AND: [where, searchWhere] } : searchWhere;
+    }
+
     const [courses, totalItems] = await this.coursesRepository.findAll(
       skip,
       limit,
+      where,
     );
 
     const data = courses.map((course) => {
@@ -58,12 +101,16 @@ export class CoursesService {
       return { ...rest, lessonsCount, studentsCount };
     });
 
+    const totalPages = Math.max(1, Math.ceil(totalItems / limit));
+
     return {
       data,
       meta: {
-        totalItems,
+        firstPage: 1,
+        lastPage: totalPages,
         currentPage: page,
-        lastPage: Math.ceil(totalItems / limit),
+        totalPages,
+        totalItems,
       },
     };
   }

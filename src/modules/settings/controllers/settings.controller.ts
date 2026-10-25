@@ -1,9 +1,19 @@
-import { Body, Controller, Get, Param, Put } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, Param, Put, UseGuards } from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { JwtAuthGuard } from 'src/modules/auth/guards/jwt-auth.guard';
+import { RolesGuard } from 'src/modules/auth/guards/roles.guard';
+import { Roles } from 'src/modules/auth/decorators/roles.decorator';
 import { SettingsService } from '../services/settings.service';
 import { UpsertSettingDto } from '../dtos/upsert-setting.dto';
 
 @ApiTags('Settings')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('settings')
 export class SettingsController {
   constructor(private readonly settingsService: SettingsService) {}
@@ -23,6 +33,7 @@ export class SettingsController {
   }
 
   @Put(':key')
+  @Roles('SUPERADMIN', 'ADMIN')
   @ApiOperation({
     summary: 'Guardar o actualizar una configuración por su clave',
   })

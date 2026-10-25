@@ -2,7 +2,10 @@ import { IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CourseCompletedWebhookDto {
-  @ApiPropertyOptional({ description: 'Tipo de evento de webhook', default: 'course.completed' })
+  @ApiPropertyOptional({
+    description: 'Tipo de evento de webhook',
+    default: 'course.completed',
+  })
   @IsOptional()
   @IsString()
   event?: string;
